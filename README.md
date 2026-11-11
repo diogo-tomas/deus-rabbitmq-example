@@ -37,6 +37,7 @@ cmd/
   api/main.go              HTTP server, graceful shutdown
   worker/main.go           RabbitMQ consumer
   migrate/main.go          migration CLI (up/down/version)
+  seed/main.go             idempotent demo data loader
 internal/
   config/                  environment-based configuration
   domain/                  entities, status state machine, domain errors
@@ -245,6 +246,41 @@ make migrate-up
 # and start the API with RUN_MIGRATIONS=false
 ```
 
+## Demo data
+
+To have something to look at while poking at the API:
+
+```bash
+make seed
+```
+
+That loads three vessels, five cargoes spread across all three statuses, and their movement history, so every endpoint returns something meaningful. The seeder writes through the repository layer rather than the HTTP API, so it needs Postgres but neither the API nor RabbitMQ.
+
+Seeding is idempotent. Every row is inserted with a UUID derived from a fixed slug, and rows that already exist are skipped, so `make seed` can be run as often as you like. For a clean database, `make docker-down` removes the volume and the next `make seed` starts over.
+
+When the stack is running in Docker, the same seeder ships in the API image, so `make docker-run` loads this data automatically. To run it again against a stack that is already up:
+
+```bash
+docker compose exec api /app/seed
+```
+
+| Cargo | Status | Vessel | Movements |
+|---|---|---|---|
+| `CARGO-2024-001` | `delivered` | MV Atlantic Voyager | 5 |
+| `CARGO-2024-002` | `in_transit` | MV Pacific Meridian | 3 |
+| `CARGO-2024-003` | `pending` | MV Baltic Star | 1 |
+| `CARGO-2024-004` | `delivered` | MV Pacific Meridian | 4 |
+| `CARGO-2024-005` | `in_transit` | MV Atlantic Voyager | 2 |
+
+`CARGO-2024-003` is the convenient one to experiment with: it is `pending` with a single origin movement, so both `PATCH /cargoes/{id}/status` and `POST /cargoes/{id}/tracking` succeed against it.
+
+```bash
+curl -sS 'http://localhost:8080/api/v1/cargoes?status=pending'
+curl -sS 'http://localhost:8080/api/v1/cargoes/c9af856a-22db-5aa5-9f35-780e4d5527e7/tracking'
+```
+
+The cargo IDs are deterministic, so the values above are stable across runs. Historical `cargo_events` rows are seeded as well, which means the audit trail is not empty before the worker has ever run.
+
 ## Running with Docker
 
 ```bash
@@ -257,6 +293,8 @@ This builds the image and starts:
 - `rabbitmq` on `localhost:5672`, management UI on `http://localhost:15672` (`deus_user` / `deus_pass`)
 - `api` on `http://localhost:8080`
 - `worker` consuming cargo events
+
+The target waits for the API health check and then loads the demo data described in [Demo data](#demo-data), so a fresh clone is demoable in one command. Seeding is idempotent, so running `make docker-run` again leaves existing rows untouched.
 
 Stop and remove volumes:
 

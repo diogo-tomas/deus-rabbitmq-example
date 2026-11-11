@@ -4,13 +4,14 @@ COVERAGE_FILE := coverage.out
 TEST_DATABASE_URL := postgres://deus:deus@localhost:5432/deus?sslmode=disable
 TEST_RABBITMQ_URL := amqp://deus_user:deus_pass@localhost:5672/
 
-.PHONY: help deps run worker migrate-up migrate-down migrate-version test test-integration cover lint openapi-lint fmt docker-run docker-down clean
+.PHONY: help deps run worker seed migrate-up migrate-down migrate-version test test-integration cover lint openapi-lint fmt docker-run docker-down clean
 
 help:
 	@printf '%s\n' \
 		'make deps              Start Postgres and RabbitMQ' \
 		'make run               Run the API locally' \
 		'make worker            Run the event worker locally' \
+		'make seed              Load idempotent demo data for manual testing' \
 		'make migrate-up        Apply database migrations' \
 		'make migrate-down      Roll back database migrations' \
 		'make test              Run unit tests with the race detector' \
@@ -19,7 +20,7 @@ help:
 		'make lint              Run go vet (and staticcheck when installed)' \
 		'make openapi-lint      Lint openapi.yaml with Redocly' \
 		'make fmt               Format Go sources' \
-		'make docker-run        Build and start the full stack' \
+		'make docker-run        Build, start the full stack and load demo data' \
 		'make docker-down       Stop the stack and remove volumes' \
 		'make clean             Remove build artifacts'
 
@@ -31,6 +32,9 @@ run: deps
 
 worker: deps
 	go run ./cmd/worker
+
+seed: deps
+	go run ./cmd/seed
 
 migrate-up:
 	go run ./cmd/migrate up
@@ -69,7 +73,8 @@ openapi-lint:
 	fi
 
 docker-run:
-	docker compose up --build -d
+	docker compose up --build -d --wait
+	docker compose exec -T api /app/seed
 
 docker-down:
 	docker compose down -v

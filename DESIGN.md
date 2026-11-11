@@ -41,7 +41,7 @@ transport/http  ->  service  ->  domain
              repository/postgres / messaging/rabbitmq
 ```
 
-The domain layer knows nothing about HTTP, SQL, or RabbitMQ. The repository and messaging packages implement interfaces declared by the service layer. `cmd/*` is the composition root where concrete implementations are wired together.
+The domain layer knows nothing about HTTP, SQL, or RabbitMQ. The repository and messaging packages implement interfaces declared by the service layer. `cmd/*` is the composition root where concrete implementations are wired together: `api` (HTTP server), `worker` (event consumer), `migrate` (schema CLI), and `seed` (idempotent demo data for manual testing).
 
 ## 3. Decision log
 
