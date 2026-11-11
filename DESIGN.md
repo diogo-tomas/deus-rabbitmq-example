@@ -20,25 +20,25 @@ Out of scope for this challenge: authentication, authorization, rate limiting, s
 Client
   │ HTTP/JSON
   ▼
-transport/http ──► service ──► domain
-                      │
-                      ├──► repository/postgres ──► PostgreSQL
-                      │
-                      └──► messaging/rabbitmq ──► RabbitMQ
-                                                     │
-                                                     ▼
-                                                   worker
-                                                     │
-                                                     ▼
-                                                cargo_events
+transport/httpapi ──► service ──► domain
+                         │
+                         ├──► repository/postgres ──► PostgreSQL
+                         │
+                         └──► messaging/rabbitmq ──► RabbitMQ
+                                                        │
+                                                        ▼
+                                                      worker
+                                                        │
+                                                        ▼
+                                                   cargo_events
 ```
 
 Dependencies point in one direction:
 
 ```
-transport/http  ->  service  ->  domain
-                        ^
-             repository/postgres / messaging/rabbitmq
+transport/httpapi  ->  service  ->  domain
+                           ^
+                repository/postgres / messaging/rabbitmq
 ```
 
 The domain layer knows nothing about HTTP, SQL, or RabbitMQ. The repository and messaging packages implement interfaces declared by the service layer. `cmd/*` is the composition root where concrete implementations are wired together: `api` (HTTP server), `worker` (event consumer), `migrate` (schema CLI), and `seed` (idempotent demo data for manual testing).
@@ -71,7 +71,7 @@ The domain layer knows nothing about HTTP, SQL, or RabbitMQ. The repository and 
 
 ### ARCH-1 — Layered packages with a one-way dependency rule
 
-**Decision.** Organize code into `domain`, `service`, `transport/http`, `repository/postgres`, and `messaging/rabbitmq`. Imports only point inward: transport depends on service, service depends on domain, and infrastructure implements service interfaces.
+**Decision.** Organize code into `domain`, `service`, `transport/httpapi`, `repository/postgres`, and `messaging/rabbitmq`. Imports only point inward: transport depends on service, service depends on domain, and infrastructure implements service interfaces.
 
 **Why.** The business rules are testable without HTTP or a database. The repository can change without touching handlers. The HTTP layer can change without touching SQL. The dependency graph stays acyclic and easy to reason about.
 
@@ -81,7 +81,7 @@ The domain layer knows nothing about HTTP, SQL, or RabbitMQ. The repository and 
 
 ### ARCH-2 — Interfaces declared where they are consumed
 
-**Decision.** `internal/service/ports.go` declares the narrow repository and publisher interfaces that the services need. `internal/repository/postgres` implements them implicitly. HTTP handlers declare small service interfaces in `internal/transport/http/contracts.go`.
+**Decision.** `internal/service/ports.go` declares the narrow repository and publisher interfaces that the services need. `internal/repository/postgres` implements them implicitly. HTTP handlers declare small service interfaces in `internal/transport/httpapi/contracts.go`.
 
 **Why.** This follows the Go idiom “accept interfaces, return structs” and avoids a central `interfaces` package that grows into a dumping ground. Tests can substitute fakes without pulling in Postgres or RabbitMQ.
 
@@ -216,7 +216,7 @@ Status mapping:
 | Disallowed lifecycle transition | `409` | `invalid_status_transition` |
 | Unexpected failure | `500` | `internal_error` |
 
-The mapping lives in `internal/transport/http/errors.go`. Internal errors are logged with details but never returned to the client.
+The mapping lives in `internal/transport/httpapi/errors.go`. Internal errors are logged with details but never returned to the client.
 
 ### Pagination
 
@@ -442,10 +442,10 @@ The runtime stage is Alpine with a non-root user, `ca-certificates`, and `wget` 
 A concise walkthrough that follows the actual dependency flow:
 
 1. **Start at `cmd/api/main.go`.** Configuration is loaded, migrations run, the pool and publisher are created, repositories and services are wired, the router is built, and the server starts with graceful shutdown.
-2. **Follow a write request.** `internal/transport/http/cargo_handler.go` decodes and validates transport input, then calls `internal/service/cargo.go`.
+2. **Follow a write request.** `internal/transport/httpapi/cargo_handler.go` decodes and validates transport input, then calls `internal/service/cargo.go`.
 3. **Explain the business rules.** The service validates fields, checks the vessel, enforces the state machine, and creates the tracking entry.
 4. **Explain persistence.** `internal/repository/postgres/cargo.go` runs explicit SQL. Status changes use a transaction, `FOR UPDATE`, and an expected-status re-check.
-5. **Explain errors.** `internal/transport/http/errors.go` is the single mapping from domain errors to HTTP status codes and the JSON envelope.
+5. **Explain errors.** `internal/transport/httpapi/errors.go` is the single mapping from domain errors to HTTP status codes and the JSON envelope.
 6. **Explain the event path.** The service publishes after commit; `internal/messaging/rabbitmq/publisher.go` uses confirms; `consumer.go` uses manual ack, prefetch, DLQ, and idempotent inserts.
 7. **Explain testing.** Unit tests use fakes; integration tests use real Postgres and RabbitMQ behind the `integration` build tag.
 8. **Be explicit about trade-offs.** Publishing after commit can lose an event; the outbox pattern is the fix. Requeue-on-failure needs a retry limit. Migrations at startup are convenient but a separate job is better in production.
@@ -480,7 +480,7 @@ They are embedded in the binary with `go:embed` and applied by `golang-migrate` 
 Integration tests run against a real Postgres, apply migrations, truncate between tests, and assert constraints, transactions, and conflict behavior. They are gated by the `integration` build tag.
 
 **What would you change for production?**
-Add a transactional outbox, a retry/DLQ policy with counters, authentication, metrics/tracing, an OpenAPI spec, a dedicated migration job, and testcontainers-based integration tests.
+Add a transactional outbox, a retry/DLQ policy with counters, authentication, metrics/tracing, a dedicated migration job, and testcontainers-based integration tests.
 
 ## 15. Configuration reference
 

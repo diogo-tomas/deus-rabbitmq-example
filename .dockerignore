@@ -5,5 +5,7 @@ coverage.out
 coverage.html
 *.md
 challenge.txt
+STUDY_PLAN.txt
+IMPROVEMENTS.txt
 *.pdf
 .env

@@ -17,6 +17,7 @@ help:
 		'make seed              Load idempotent demo data for manual testing' \
 		'make migrate-up        Apply database migrations' \
 		'make migrate-down      Roll back database migrations' \
+		'make migrate-version   Print the current migration version' \
 		'make test              Run unit tests with the race detector' \
 		'make test-integration  Run repository integration tests (deps removed after)' \
 		'make test-deps         Start the isolated integration-test dependencies' \

@@ -20,15 +20,15 @@ The service exposes a versioned REST API, persists data in PostgreSQL, and publi
 Dependencies point in one direction:
 
 ```
-transport/http  ->  service  ->  domain
-                        ^
-             repository/postgres / messaging/rabbitmq
+transport/httpapi  ->  service  ->  domain
+                           ^
+                repository/postgres / messaging/rabbitmq
 ```
 
 - `domain` contains entities, status rules, and sentinel errors. It imports no infrastructure packages.
 - `service` owns business rules. It declares the repository and publisher interfaces it needs.
 - `repository/postgres` implements those interfaces using explicit SQL.
-- `transport/http` handles JSON, validation-to-HTTP mapping, middleware, and routing.
+- `transport/httpapi` handles JSON, validation-to-HTTP mapping, middleware, and routing.
 - `messaging/rabbitmq` implements the event publisher and consumer.
 - `cmd/*` wires concrete implementations together; there is no global container.
 
@@ -46,7 +46,7 @@ internal/
   platform/logging/        slog JSON logger
   repository/postgres/     SQL repositories
   service/                 business logic + ports
-  transport/http/          handlers, DTOs, middleware, router
+  transport/httpapi/       handlers, DTOs, middleware, router
 migrations/                embedded SQL migrations
 openapi.yaml               OpenAPI 3.0.3 specification
 ```
