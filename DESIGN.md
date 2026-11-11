@@ -401,7 +401,7 @@ The runtime stage is Alpine with a non-root user, `ca-certificates`, and `wget` 
 
 - `signal.NotifyContext` handles `SIGINT` and `SIGTERM`.
 - The API calls `http.Server.Shutdown` with a timeout, then closes the publisher and database pool.
-- The consumer uses `ConsumeWithContext`; cancelling the context stops deliveries, and the deferred channel/connection closes run.
+- The consumer uses a plain `Consume` plus a `select` on `ctx.Done()`; the deferred channel/connection closes run after the loop exits. `ConsumeWithContext` is deliberately avoided because its internal `Channel.Cancel` goroutine races with the deferred `Channel.Close` for the channel's synchronous replies, which can hang shutdown.
 - The worker exits cleanly after the consumer returns.
 
 **Why.** In-flight HTTP requests should finish, and the consumer should stop taking new work before the process exits. This avoids dropped requests and unacknowledged in-flight deliveries.

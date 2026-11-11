@@ -92,7 +92,14 @@ func (c *Consumer) consume(ctx context.Context) error {
 		return fmt.Errorf("set consumer prefetch: %w", err)
 	}
 
-	deliveries, err := channel.ConsumeWithContext(ctx, c.queue, "cargo-events-worker", false, false, false, false, nil)
+	// Consume (not ConsumeWithContext) is deliberate: ConsumeWithContext starts
+	// a goroutine that calls Channel.Cancel when the context is canceled. That
+	// Cancel races with the deferred Channel.Close below, and both compete for
+	// the same synchronous reply channel. When Cancel consumes the
+	// channel.close-ok reply, Close waits forever and shutdown hangs.
+	// Cancellation is handled by the select below instead, so exactly one
+	// synchronous RPC is in flight when the channel closes.
+	deliveries, err := channel.Consume(c.queue, "cargo-events-worker", false, false, false, false, nil)
 	if err != nil {
 		return fmt.Errorf("consume queue %q: %w", c.queue, err)
 	}
