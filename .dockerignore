@@ -1,0 +1,9 @@
+.git
+.gocache
+bin
+coverage.out
+coverage.html
+*.md
+challenge.txt
+*.pdf
+.env

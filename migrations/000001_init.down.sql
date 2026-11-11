@@ -1,0 +1,4 @@
+DROP TABLE IF EXISTS cargo_events;
+DROP TABLE IF EXISTS tracking;
+DROP TABLE IF EXISTS cargoes;
+DROP TABLE IF EXISTS vessels;

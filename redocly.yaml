@@ -1,0 +1,13 @@
+extends:
+  - recommended
+
+rules:
+  # The project does not publish a license URL.
+  info-license-strict: off
+
+  # The only documented server is the local Docker Compose stack.
+  no-server-example.com: off
+
+  # This rule expects every operation to declare a 4XX response. The list and
+  # health operations legitimately return only 2xx/5xx/503 responses.
+  operation-4xx-response: off

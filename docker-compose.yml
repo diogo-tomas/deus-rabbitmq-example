@@ -1,6 +1,20 @@
-version: '3'
-
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: deus
+      POSTGRES_PASSWORD: deus
+      POSTGRES_DB: deus
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U deus -d deus"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   rabbitmq:
     image: rabbitmq:management
     container_name: rabbitmq
@@ -10,7 +24,51 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
 
-networks:
-  default:
-    driver: bridge
+  api:
+    build: .
+    environment:
+      HTTP_ADDR: ":8080"
+      DATABASE_URL: "postgres://deus:deus@postgres:5432/deus?sslmode=disable"
+      RABBITMQ_URL: "amqp://deus_user:deus_pass@rabbitmq:5672/"
+      RABBITMQ_EXCHANGE: cargo.events
+      RABBITMQ_QUEUE: cargo.events.worker
+      RABBITMQ_ROUTING_KEY: cargo.status.changed
+      RUN_MIGRATIONS: "true"
+      LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build: .
+    command: ["/app/worker"]
+    environment:
+      DATABASE_URL: "postgres://deus:deus@postgres:5432/deus?sslmode=disable"
+      RABBITMQ_URL: "amqp://deus_user:deus_pass@rabbitmq:5672/"
+      RABBITMQ_EXCHANGE: cargo.events
+      RABBITMQ_QUEUE: cargo.events.worker
+      RABBITMQ_ROUTING_KEY: cargo.status.changed
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+volumes:
+  pgdata:

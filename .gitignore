@@ -1,0 +1,21 @@
+# Build artifacts
+/bin/
+coverage.out
+coverage.html
+*.test
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# Go caches used when running inside restricted environments
+.gocache/
+
+# Personal study notes
+STUDY_PLAN.txt
+
+# Editor/OS
+.idea/
+.vscode/
+.DS_Store

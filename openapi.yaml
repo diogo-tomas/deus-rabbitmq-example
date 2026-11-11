@@ -1,0 +1,888 @@
+openapi: 3.0.3
+info:
+  title: Deus Logistics API
+  version: 1.0.0
+  description: |
+    REST API for managing cargoes, vessels, tracking history, and cargo status events.
+
+    Base path: `/api/v1`. All request and response bodies are JSON. Errors use a
+    consistent envelope with a machine-readable `code` and an optional `request_id`.
+
+    Allowed cargo status transitions:
+    `pending -> in_transit -> delivered`. Any other transition returns `409`.
+  contact:
+    name: Deus Logistics API
+  license:
+    name: Proprietary
+
+externalDocs:
+  description: Project README
+  url: https://github.com/example/deus-rabbitmq-example
+
+servers:
+  - url: http://localhost:8080
+    description: Local Docker Compose stack
+
+security: []
+
+tags:
+  - name: Vessels
+    description: Vessel management
+  - name: Cargoes
+    description: Cargo management and status transitions
+  - name: Tracking
+    description: Append-only cargo movement history
+  - name: Health
+    description: Liveness and readiness probes
+
+paths:
+  /api/v1/vessels:
+    post:
+      tags:
+        - Vessels
+      operationId: createVessel
+      summary: Create a vessel
+      description: Creates a vessel. Vessel names are unique.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVesselRequest'
+            example:
+              name: MV Atlantic
+              capacity: 1200
+              current_location: Rotterdam
+      responses:
+        '201':
+          description: Vessel created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vessel'
+              example:
+                id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                name: MV Atlantic
+                capacity: 1200
+                current_location: Rotterdam
+                created_at: '2026-11-10T12:00:00Z'
+                updated_at: '2026-11-10T12:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags:
+        - Vessels
+      operationId: listVessels
+      summary: List vessels
+      responses:
+        '200':
+          description: Vessel list
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VesselList'
+              example:
+                items:
+                  - id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                    name: MV Atlantic
+                    capacity: 1200
+                    current_location: Rotterdam
+                    created_at: '2026-11-10T12:00:00Z'
+                    updated_at: '2026-11-10T12:00:00Z'
+                total: 1
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/vessels/{id}:
+    get:
+      tags:
+        - Vessels
+      operationId: getVessel
+      summary: Get a vessel
+      parameters:
+        - $ref: '#/components/parameters/VesselId'
+      responses:
+        '200':
+          description: Vessel
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Vessel'
+              example:
+                id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                name: MV Atlantic
+                capacity: 1200
+                current_location: Rotterdam
+                created_at: '2026-11-10T12:00:00Z'
+                updated_at: '2026-11-10T12:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/cargoes:
+    post:
+      tags:
+        - Cargoes
+      operationId: createCargo
+      summary: Create a cargo
+      description: Creates a cargo in `pending` status and assigns it to a vessel.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCargoRequest'
+            example:
+              code: C-1001
+              description: Medical supplies
+              weight_kg: 1250.5
+              vessel_id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+      responses:
+        '201':
+          description: Cargo created
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cargo'
+              example:
+                id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                code: C-1001
+                description: Medical supplies
+                weight_kg: 1250.5
+                status: pending
+                vessel_id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                created_at: '2026-11-10T12:00:00Z'
+                updated_at: '2026-11-10T12:00:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags:
+        - Cargoes
+      operationId: listCargoes
+      summary: List cargoes
+      description: Returns a paginated cargo list with optional status and vessel filters.
+      parameters:
+        - $ref: '#/components/parameters/CargoStatusFilter'
+        - $ref: '#/components/parameters/VesselIdFilter'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Offset'
+      responses:
+        '200':
+          description: Paginated cargo list
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CargoList'
+              example:
+                items:
+                  - id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                    code: C-1001
+                    description: Medical supplies
+                    weight_kg: 1250.5
+                    status: pending
+                    vessel_id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                    created_at: '2026-11-10T12:00:00Z'
+                    updated_at: '2026-11-10T12:00:00Z'
+                total: 1
+                limit: 20
+                offset: 0
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/cargoes/{id}:
+    get:
+      tags:
+        - Cargoes
+      operationId: getCargo
+      summary: Get a cargo
+      parameters:
+        - $ref: '#/components/parameters/CargoId'
+      responses:
+        '200':
+          description: Cargo
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cargo'
+              example:
+                id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                code: C-1001
+                description: Medical supplies
+                weight_kg: 1250.5
+                status: in_transit
+                vessel_id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                created_at: '2026-11-10T12:00:00Z'
+                updated_at: '2026-11-10T12:05:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/cargoes/{id}/status:
+    patch:
+      tags:
+        - Cargoes
+      operationId: changeCargoStatus
+      summary: Change cargo status
+      description: |
+        Applies a status transition, appends a tracking entry, and publishes a
+        `cargo.status.changed` event. Only `pending -> in_transit` and
+        `in_transit -> delivered` are allowed.
+      parameters:
+        - $ref: '#/components/parameters/CargoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangeCargoStatusRequest'
+            example:
+              status: in_transit
+              location: Rotterdam
+      responses:
+        '200':
+          description: Cargo status changed
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Cargo'
+              example:
+                id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                code: C-1001
+                description: Medical supplies
+                weight_kg: 1250.5
+                status: in_transit
+                vessel_id: 17778ab9-73b0-4d06-b331-8a1ae2728ca1
+                created_at: '2026-11-10T12:00:00Z'
+                updated_at: '2026-11-10T12:05:00Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/cargoes/{id}/tracking:
+    get:
+      tags:
+        - Tracking
+      operationId: listCargoTracking
+      summary: Get tracking history
+      description: Returns the append-only movement history for a cargo, newest first.
+      parameters:
+        - $ref: '#/components/parameters/CargoId'
+      responses:
+        '200':
+          description: Tracking history
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingList'
+              example:
+                items:
+                  - id: bce691bf-79d3-4b0d-835a-868a0c93f54b
+                    cargo_id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                    location: Hamburg
+                    status: delivered
+                    occurred_at: '2026-11-10T13:16:11Z'
+                    created_at: '2026-11-10T13:16:11Z'
+                  - id: 1bcb52b7-d8ac-4b6b-a842-57b687805f1c
+                    cargo_id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                    location: Rotterdam
+                    status: in_transit
+                    occurred_at: '2026-11-10T13:16:11Z'
+                    created_at: '2026-11-10T13:16:11Z'
+                total: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags:
+        - Tracking
+      operationId: addCargoTracking
+      summary: Append a tracking entry
+      description: Appends a movement/location entry without changing the cargo status.
+      parameters:
+        - $ref: '#/components/parameters/CargoId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTrackingRequest'
+            example:
+              location: Hamburg
+              occurred_at: '2026-11-11T08:30:00Z'
+      responses:
+        '201':
+          description: Tracking entry created
+          headers:
+            X-Request-ID:
+              $ref: '#/components/headers/RequestId'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrackingEntry'
+              example:
+                id: bce691bf-79d3-4b0d-835a-868a0c93f54b
+                cargo_id: 50de0db2-d909-45e2-a2f8-d1ef886769a0
+                location: Hamburg
+                status: in_transit
+                occurred_at: '2026-11-11T08:30:00Z'
+                created_at: '2026-11-11T08:30:01Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /healthz:
+    get:
+      tags:
+        - Health
+      operationId: healthz
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+
+  /readyz:
+    get:
+      tags:
+        - Health
+      operationId: readyz
+      summary: Readiness probe
+      description: Checks the PostgreSQL connection.
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: ok
+        '503':
+          description: Service is not ready
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+              example:
+                status: unavailable
+
+components:
+  parameters:
+    VesselId:
+      name: id
+      in: path
+      required: true
+      description: Vessel UUID
+      schema:
+        type: string
+        format: uuid
+    CargoId:
+      name: id
+      in: path
+      required: true
+      description: Cargo UUID
+      schema:
+        type: string
+        format: uuid
+    CargoStatusFilter:
+      name: status
+      in: query
+      required: false
+      description: Filter cargoes by status
+      schema:
+        $ref: '#/components/schemas/CargoStatus'
+    VesselIdFilter:
+      name: vessel_id
+      in: query
+      required: false
+      description: Filter cargoes by vessel UUID
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size. Values above 100 are capped at 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Offset:
+      name: offset
+      in: query
+      required: false
+      description: Number of records to skip.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+
+  headers:
+    Location:
+      description: Relative URL of the created resource.
+      schema:
+        type: string
+      example: /api/v1/cargoes/50de0db2-d909-45e2-a2f8-d1ef886769a0
+    RequestId:
+      description: Request correlation ID. Echoes X-Request-ID when provided.
+      schema:
+        type: string
+      example: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+
+  schemas:
+    CargoStatus:
+      type: string
+      description: Cargo lifecycle state.
+      enum:
+        - pending
+        - in_transit
+        - delivered
+
+    CreateVesselRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - capacity
+        - current_location
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+          example: MV Atlantic
+        capacity:
+          type: integer
+          minimum: 1
+          example: 1200
+        current_location:
+          type: string
+          minLength: 1
+          example: Rotterdam
+
+    Vessel:
+      type: object
+      required:
+        - id
+        - name
+        - capacity
+        - current_location
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        capacity:
+          type: integer
+          minimum: 1
+        current_location:
+          type: string
+          minLength: 1
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+
+    VesselList:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Vessel'
+        total:
+          type: integer
+          minimum: 0
+
+    CreateCargoRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - code
+        - weight_kg
+        - vessel_id
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+          example: C-1001
+        description:
+          type: string
+          example: Medical supplies
+        weight_kg:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMinimum: true
+          example: 1250.5
+        vessel_id:
+          type: string
+          format: uuid
+
+    Cargo:
+      type: object
+      required:
+        - id
+        - code
+        - description
+        - weight_kg
+        - status
+        - vessel_id
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        code:
+          type: string
+          minLength: 1
+          maxLength: 64
+        description:
+          type: string
+        weight_kg:
+          type: number
+          format: double
+        status:
+          $ref: '#/components/schemas/CargoStatus'
+        vessel_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CargoList:
+      type: object
+      required:
+        - items
+        - total
+        - limit
+        - offset
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cargo'
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    ChangeCargoStatusRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - location
+      properties:
+        status:
+          $ref: '#/components/schemas/CargoStatus'
+        location:
+          type: string
+          minLength: 1
+          example: Rotterdam
+
+    CreateTrackingRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - location
+      properties:
+        location:
+          type: string
+          minLength: 1
+          example: Hamburg
+        occurred_at:
+          type: string
+          format: date-time
+          description: When the movement occurred. Defaults to the current server time when omitted.
+          example: '2026-11-11T08:30:00Z'
+
+    TrackingEntry:
+      type: object
+      required:
+        - id
+        - cargo_id
+        - location
+        - status
+        - occurred_at
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        cargo_id:
+          type: string
+          format: uuid
+        location:
+          type: string
+        status:
+          $ref: '#/components/schemas/CargoStatus'
+        occurred_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+
+    TrackingList:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackingEntry'
+        total:
+          type: integer
+          minimum: 0
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - unavailable
+
+    ErrorEnvelope:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          $ref: '#/components/schemas/ErrorDetail'
+
+    ErrorDetail:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+          enum:
+            - bad_request
+            - validation_error
+            - not_found
+            - conflict
+            - invalid_status_transition
+            - internal_error
+        message:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/FieldError'
+        request_id:
+          type: string
+
+    FieldError:
+      type: object
+      required:
+        - field
+        - message
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+  responses:
+    BadRequest:
+      description: Malformed JSON, invalid path parameter, or invalid query parameter.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: bad_request
+              message: id must be a valid UUID
+              request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+
+    NotFound:
+      description: The requested resource does not exist.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: not_found
+              message: 'not found: cargo 50de0db2-d909-45e2-a2f8-d1ef886769a0'
+              request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+
+    Conflict:
+      description: Duplicate resource, stale concurrent update, or invalid status transition.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            duplicate:
+              summary: Duplicate cargo code or vessel name
+              value:
+                error:
+                  code: conflict
+                  message: 'conflict: cargo already exists'
+                  request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+            staleUpdate:
+              summary: Concurrent status change won the race
+              value:
+                error:
+                  code: conflict
+                  message: 'conflict: cargo 50de0db2-d909-45e2-a2f8-d1ef886769a0 status is in_transit, expected pending'
+                  request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+            invalidTransition:
+              summary: Disallowed lifecycle transition
+              value:
+                error:
+                  code: invalid_status_transition
+                  message: 'invalid status transition: cargo 50de0db2-d909-45e2-a2f8-d1ef886769a0 cannot move from delivered to pending'
+                  request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+
+    UnprocessableEntity:
+      description: Semantic validation failure.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: validation_error
+              message: request validation failed
+              fields:
+                - field: code
+                  message: is required
+                - field: weight_kg
+                  message: must be greater than zero
+              request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
+
+    InternalError:
+      description: Unexpected server error. Details are logged server-side.
+      headers:
+        X-Request-ID:
+          $ref: '#/components/headers/RequestId'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: internal_error
+              message: internal server error
+              request_id: 7b2c3d4e-5f60-4712-8a9b-0c1d2e3f4a5b
