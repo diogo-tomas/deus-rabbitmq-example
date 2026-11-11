@@ -306,7 +306,7 @@ make docker-down
 
 ```bash
 make test              # unit tests with -race
-make test-integration  # repository tests against Postgres (starts compose deps)
+make test-integration  # repository tests against Postgres (ephemeral compose deps)
 make cover             # unit + integration coverage across internal packages
 make lint              # go vet (+ staticcheck when installed)
 ```
@@ -316,12 +316,12 @@ Unit tests cover domain rules, service orchestration with fake repositories/publ
 Integration tests are gated by the `integration` build tag and require `TEST_DATABASE_URL` and `TEST_RABBITMQ_URL`:
 
 ```bash
-TEST_DATABASE_URL='postgres://deus:deus@localhost:5432/deus?sslmode=disable' \
-TEST_RABBITMQ_URL='amqp://deus_user:deus_pass@localhost:5672/' \
+TEST_DATABASE_URL='postgres://deus:deus@localhost:5433/deus_test?sslmode=disable' \
+TEST_RABBITMQ_URL='amqp://deus_user:deus_pass@localhost:5673/' \
   go test -tags=integration ./...
 ```
 
-They run migrations, truncate tables between tests, and exercise a real publish/consume round-trip on isolated RabbitMQ exchange and queue names. Use a dedicated database, not a shared development one.
+They run migrations, truncate tables between tests, and exercise a real publish/consume round-trip on isolated RabbitMQ exchange and queue names. `make test-integration` and `make cover` start the isolated compose stack and remove it, including its volume, when the run finishes (pass or fail). Use a dedicated database, not a shared development one.
 
 ## Event flow
 

@@ -1,10 +1,13 @@
 SHELL := /bin/sh
 
-COVERAGE_FILE := coverage.out
-TEST_DATABASE_URL := postgres://deus:deus@localhost:5432/deus?sslmode=disable
-TEST_RABBITMQ_URL := amqp://deus_user:deus_pass@localhost:5672/
+COMPOSE_DEV := docker compose -f docker-compose.yml
+COMPOSE_TEST := docker compose -f docker-compose.test.yml
 
-.PHONY: help deps run worker seed migrate-up migrate-down migrate-version test test-integration cover lint openapi-lint fmt docker-run docker-down clean
+COVERAGE_FILE := coverage.out
+TEST_DATABASE_URL := postgres://deus:deus@localhost:5433/deus_test?sslmode=disable
+TEST_RABBITMQ_URL := amqp://deus_user:deus_pass@localhost:5673/
+
+.PHONY: help deps test-deps test-deps-down run worker seed migrate-up migrate-down migrate-version test test-integration cover lint openapi-lint fmt docker-run docker-down clean
 
 help:
 	@printf '%s\n' \
@@ -15,7 +18,9 @@ help:
 		'make migrate-up        Apply database migrations' \
 		'make migrate-down      Roll back database migrations' \
 		'make test              Run unit tests with the race detector' \
-		'make test-integration  Run repository integration tests' \
+		'make test-integration  Run repository integration tests (deps removed after)' \
+		'make test-deps         Start the isolated integration-test dependencies' \
+		'make test-deps-down    Stop integration deps and remove their volume' \
 		'make cover             Run tests and print coverage' \
 		'make lint              Run go vet (and staticcheck when installed)' \
 		'make openapi-lint      Lint openapi.yaml with Redocly' \
@@ -25,7 +30,13 @@ help:
 		'make clean             Remove build artifacts'
 
 deps:
-	docker compose up -d --wait postgres rabbitmq
+	$(COMPOSE_DEV) up -d --wait postgres rabbitmq
+
+test-deps:
+	$(COMPOSE_TEST) up -d --wait postgres rabbitmq
+
+test-deps-down:
+	$(COMPOSE_TEST) down -v
 
 run: deps
 	go run ./cmd/api
@@ -48,10 +59,16 @@ migrate-version:
 test:
 	go test -race -count=1 ./...
 
-test-integration: deps
+test-integration:
+	@set -e; \
+	trap '$(COMPOSE_TEST) down -v' EXIT; \
+	$(COMPOSE_TEST) up -d --wait postgres rabbitmq; \
 	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' TEST_RABBITMQ_URL='$(TEST_RABBITMQ_URL)' go test -race -tags=integration -count=1 ./...
 
-cover: deps
+cover:
+	@set -e; \
+	trap '$(COMPOSE_TEST) down -v' EXIT; \
+	$(COMPOSE_TEST) up -d --wait postgres rabbitmq; \
 	TEST_DATABASE_URL='$(TEST_DATABASE_URL)' TEST_RABBITMQ_URL='$(TEST_RABBITMQ_URL)' go test -race -tags=integration -coverpkg=./internal/...,./migrations -coverprofile=$(COVERAGE_FILE) ./...
 	go tool cover -func=$(COVERAGE_FILE)
 
@@ -73,11 +90,11 @@ openapi-lint:
 	fi
 
 docker-run:
-	docker compose up --build -d --wait
-	docker compose exec -T api /app/seed
+	$(COMPOSE_DEV) up --build -d --wait
+	$(COMPOSE_DEV) exec -T api /app/seed
 
 docker-down:
-	docker compose down -v
+	$(COMPOSE_DEV) down -v
 
 clean:
 	rm -rf bin $(COVERAGE_FILE) coverage.html .gocache
